@@ -9,36 +9,36 @@
   // Image tag (application version) to use.
   // Note: "latest" is not recommended in production, as you can't be sure what version
   // you're actually running, and must manually re-pull to get an updated copy.
-  image_tag:: "latest",
+  image_tag:: "3fa3c73",
 
   // For each service, whether to deploy that service.
   enabled:: {
     downloader: true,
     restreamer: true,
-    backfiller: true,
-    cutter: true,
+    backfiller: false,
+    cutter: false,
     sheetsync: false,
-    thrimshim: true,
+    thrimshim: false,
     nginx: true,
     postgres: false,
   },
 
   // Twitch channel to capture
-  channel:: "desertbus",
+  channel:: "gamesdonequick",
 
   // Stream qualities to capture
   qualities:: ["source", "480p"],
 
   // Local path to save segments to. Full path must already exist. Cannot contain ':'.
   // On OSX you need to change this to /private/var/lib/wubloader
-  segments_path:: "/var/lib/wubloader/",
+  segments_path:: "/srv/wubloader/",
 
   // Local path to save database to. Full path must already exist. Cannot
   // contain ':'. If this directory is non-empty, the database will start with
   // the database in this directory and not run the setup scripts to create a 
   // new database.
   // On OSX you need to change this to /private/var/lib/wubloader_postgres/
-  database_path:: "/var/lib/wubloader_postgres/",
+  database_path:: "/srv/wubloader_postgres/",
 
   // The host's port to expose each service on.
   // Only nginx (and postgres if that is being deployed) needs to be externally accessible - the other non-database ports are routed through nginx.
@@ -49,7 +49,7 @@
     backfiller: 8002,
     cutter: 8003,
     sheetsync: 8005,
-    nginx: 80,
+    nginx: 8888,
     postgres: 5432,
   },
 
@@ -85,17 +85,17 @@
 
   // Path to a JSON file containing google credentials as keys
   // 'client_id', 'client_secret' and 'refresh_token'.
-  google_creds:: "./google_creds.json",
+  google_creds:: "/home/mike/src/wubloader/test_creds.json",
 
   // The URL to write to the sheet for edit links, with {} being replaced by the id
   edit_url:: "http://thrimbletrimmer.codegunner.com/?id={}",
 
   // The timestamp corresponding to 00:00 in bustime
-  bustime_start:: "1970-01-01T00:00:00Z",
+  bustime_start:: "2019-06-21T16:30:00Z",
 
   // The spreadsheet id and worksheet names for sheet sync to act on
-  sheet_id:: "your_id_here",
-  worksheets:: ["Day %d" % n for n in std.range(1, 7)],
+  sheet_id:: "1Ce8TnpfcAQKHhvVBdNkE52No73_gABLJNOKtK3iiNoE",
+  worksheets:: ["Day 1"],
 
   // Now for the actual docker-compose config
 
