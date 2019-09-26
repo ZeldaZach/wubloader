@@ -9,7 +9,7 @@
   // Image tag (application version) to use.
   // Note: "latest" is not recommended in production, as you can't be sure what version
   // you're actually running, and must manually re-pull to get an updated copy.
-  image_tag:: "3fa3c73",
+  image_tag:: "54f6a70",
 
   // For each service, whether to deploy that service.
   enabled:: {
