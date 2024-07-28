@@ -147,6 +147,8 @@ CREATE TABLE playlists (
 	playlist_id TEXT PRIMARY KEY,
 	name TEXT NOT NULL,
 	tags TEXT[] NOT NULL,
+	first_event_id UUID references events(id) on delete set null,
+	last_event_id UUID references events(id) on delete set null,
 	show_in_description BOOLEAN NOT NULL
 );
 

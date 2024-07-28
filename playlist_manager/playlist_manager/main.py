@@ -87,7 +87,7 @@ class PlaylistManager(object):
 		conn = self.dbmanager.get_conn()
 		playlist_tags = {
 			row.playlist_id: [tag.lower() for tag in row.tags]
-			for row in query(conn, "SELECT playlist_id, tags FROM playlists")
+			for row in query(conn, "SELECT playlist_id, tags, first_event_id, last_event_id FROM playlists")
 		}
 		self.dbmanager.put_conn(conn)
 		duplicates = set(playlist_tags) & set(self.static_playlist_tags)
@@ -104,23 +104,49 @@ class PlaylistManager(object):
 		]
 		logging.debug("Found {} matching videos for playlist {}".format(len(matching), playlist))
 		# If we have nothing to add, short circuit without doing any API calls to save quota.
-		if not set([v.video_id for v in matching]) - set(self.playlist_state.get(playlist, [])):
+
+		matching_video_ids = {video.video_id for video in matching}
+		playlist_video_ids = {video_id for _, video_id in self.playlist_state.get(playlist, [])}
+		if not (matching_video_ids - playlist_video_ids):
 			logging.debug("All videos already in playlist, nothing to do")
 			return
-		# Refresh our playlist state, if nessecary.
+		# Refresh our playlist state, if necessary.
 		self.refresh_playlist(playlist)
+		self.relocate_playlist_ends(videos, playlist)
+
 		# Get an updated list of new videos
-		new_videos = [
-			video for video in matching
-			if video.video_id not in self.playlist_state[playlist]
-		]
+		matching_video_ids = {video.video_id for video in matching}
+		playlist_video_ids = {video_id for _, video_id in self.playlist_state.get(playlist, [])}
 		# It shouldn't matter, but just for clarity let's sort them by event order
-		new_videos.sort(key=lambda v: v.start_time)
+		new_videos = sorted(matching_video_ids - playlist_video_ids, key=lambda v: v.start_time)
+
 		# Insert each new video one at a time
 		logging.debug("Inserting new videos for playlist {}: {}".format(playlist, new_videos))
 		for video in new_videos:
 			index = self.find_insert_index(videos, self.playlist_state[playlist], video)
 			self.insert_into_playlist(playlist, video.video_id, index)
+
+	def relocate_playlist_ends(self, videos, playlist):
+		for index, video_id in enumerate(playlist):
+			if video_id not in videos:
+				continue
+			video = videos[video_id]
+
+			if video.id == playlist.first_event_id:
+				self.api.update_playlist(playlist, playlist_item_id, video_id, 0)
+
+				# self.api.insert_into_playlist(playlist, video_id, index)
+				# self.playlist_state.setdefault(playlist, []).insert(index, video_id)
+
+				# Call MOVE from (INDEX to 0)
+				# Pop and update cache
+				pass
+			elif video.id == playlist.last_event_id:
+				self.api.update_playlist(playlist, playlist_item_id, video_id, len(playlist))
+				# Call MOVE from (INDEX to LEN(playlist)
+				# Pop and update cache
+				pass
+
 
 	def refresh_playlist(self, playlist):
 		"""Check playlist mirror is in a good state, and fetch it if it isn't.
@@ -146,7 +172,7 @@ class PlaylistManager(object):
 		query.fetch_all()
 		# Update saved copy with video ids
 		self.playlist_state[playlist] = [
-			item['snippet']['resourceId'].get('videoId') # api implies it's possible that non-videos are added
+			(item['id'], item['snippet']['resourceId'].get('videoId'))
 			for item in query.items
 		]
 
@@ -155,6 +181,11 @@ class PlaylistManager(object):
 		playlist remains sorted (it is assumed to already be sorted).
 		videos should be a mapping from video ids to video info.
 		"""
+		if playlist.first_event_id == new_video.id:
+			return 0
+		if playlist.last_event_id == new_video.id:
+			return len(playlist)
+
 		# To try to behave as best we can in the presence of mis-sorted playlists,
 		# we walk through the list linearly. We insert immediately before the first
 		# item that should be after us in sort order.
@@ -165,6 +196,13 @@ class PlaylistManager(object):
 				# ignore unknowns
 				continue
 			video = videos[video_id]
+
+			# The starting video of a playlist can have its own times, unaffiliated with other videos
+			if video.id == playlist.first_event_id:
+				continue
+			# The new video needs to go before the last video in the playlist
+			if video.id == playlist.last_event_id:
+				return n
 			# if this video is after new video, return this index
 			if new_video.start_time < video.start_time:
 				return n
@@ -209,6 +247,29 @@ class YoutubeAPI(object):
 			if not resp.ok:
 				raise Exception("Failed to insert {video_id} at index {index} of {playlist} with {resp.status_code}: {resp.content}".format(
 					playlist=playlist, video_id=video_id, index=index, resp=resp,
+				))
+
+	def update_playlist(self, playlist, playlist_item_id, video_id, new_index):
+		json = {
+			"id": playlist_item_id,
+			"snippet": {
+				"playlistId": playlist,
+				"resourceId": {
+					"kind": "youtube#video",
+					"videoId": video_id,
+				},
+				"position": new_index,
+			},
+		}
+		with self.insert_lock:
+			resp = self.client.request("PUT", "https://www.googleapis.com/youtube/v3/playlistItems",
+				params={"part": "snippet"},
+				json=json,
+				metric_name="playlist_update",
+			)
+			if not resp.ok:
+				raise Exception("Failed to insert {video_id} at index {index} of {playlist} with {resp.status_code}: {resp.content}".format(
+					playlist=playlist, video_id=video_id, index=new_index, resp=resp,
 				))
 
 	def list_playlist(self, playlist):
